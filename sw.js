@@ -1,5 +1,5 @@
-const CACHE = 'yuliang-web-v1.3';
-const FILES = ['./', './index.html', './app.js?v=1.3', './core.js', './cloud.js', './style.css?v=1.3', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
+const CACHE = 'yuliang-web-v1.4';
+const FILES = ['./', './index.html', './app.js?v=1.4', './core.js', './cloud.js', './style.css?v=1.4', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => event.waitUntil(
   caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())
 ));

@@ -27,10 +27,10 @@ $('#remaining').onsubmit=async e=>{e.preventDefault();try{const next=structuredC
 setupCloud({
   getLedger: () => state,
   restore: commit,
-  readMeta: () => read('githubBackupTime'),
-  saveMeta: time => new Promise((resolve,reject)=>{
+  readMeta: key => read(key),
+  saveMeta: (key, value) => new Promise((resolve,reject)=>{
     const tx=db.transaction('ledger','readwrite');
-    tx.objectStore('ledger').put(time,'githubBackupTime');
+    tx.objectStore('ledger').put(value,key);
     tx.oncomplete=resolve;
     tx.onabort=()=>reject(tx.error);
   })

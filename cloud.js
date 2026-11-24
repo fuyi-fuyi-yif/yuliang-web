@@ -46,7 +46,20 @@ export function setupCloud({getLedger, restore, readMeta, saveMeta}) {
   function showTime(time) {
     el('cloudTime').textContent = time ? '本机最近备份时间 ' + new Date(time).toLocaleString('zh-CN') : '本机尚无备份时间记录';
   }
-  readMeta().then(showTime).catch(() => showTime(null));
+  readMeta('githubBackupTime').then(showTime).catch(() => showTime(null));
+  readMeta('githubToken').then(saved => { if (saved && !token.value) token.value = saved; })
+    .catch(() => { status.textContent = '无法读取已保存的授权码，请重新输入。'; });
+  token.addEventListener('change', async () => {
+    try {
+      await saveMeta('githubToken', token.value.trim());
+      status.textContent = token.value.trim() ? '授权码已保存到当前设备。' : '已清除当前设备的授权码。';
+    } catch { status.textContent = '授权码未能保存到当前设备。'; }
+  });
+  el('cloudClearToken').onclick = async () => {
+    token.value = '';
+    try { await saveMeta('githubToken', ''); status.textContent = '已清除当前设备的授权码。'; }
+    catch { status.textContent = '清除失败，请重试。'; }
+  };
 
   async function api(path, options = {}) {
     const response = await fetch(base + path, {
@@ -93,6 +106,8 @@ export function setupCloud({getLedger, restore, readMeta, saveMeta}) {
       token.focus();
       return;
     }
+    try { await saveMeta('githubToken', token.value.trim()); }
+    catch { status.textContent = '授权码未能保存到当前设备。'; return; }
     pending = true;
     buttons.forEach(button => button.disabled = true);
     status.textContent = '正在核对私有仓库和账本…';
@@ -124,7 +139,7 @@ export function setupCloud({getLedger, restore, readMeta, saveMeta}) {
         const time = new Date().toISOString();
         showTime(time);
         status.textContent = '已备份 ' + local.transactions.length + ' 笔记录。';
-        try { await saveMeta(time); } catch { status.textContent += '本机未能保存备份时间。'; }
+        try { await saveMeta('githubBackupTime', time); } catch { status.textContent += '本机未能保存备份时间。'; }
       } else {
         await restore(remote.ledger);
         status.textContent = '已恢复 ' + remote.ledger.transactions.length + ' 笔记录。';
