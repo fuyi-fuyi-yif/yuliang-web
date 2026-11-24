@@ -1,10 +1,16 @@
+import {setupCloud} from './cloud.js';
 import {blank,validate,cents,money,today,signed,rows,flexible} from './core.js';
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let state,db,editing=null,busy=false;
 const msg=s=>$('#message').textContent=s;
 const request=r=>new Promise((ok,no)=>{r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error);});
 async function read(key){return request(db.transaction('ledger').objectStore('ledger').get(key));}
-async function commit(next){if(busy)throw Error('正在保存，请稍后');busy=true;try{next=validate(next);await new Promise((ok,no)=>{const tx=db.transaction('ledger','readwrite');const st=tx.objectStore('ledger');if(state)st.put(state,'previous');st.put(next,'current');tx.oncomplete=ok;tx.onerror=()=>no(tx.error);tx.onabort=()=>no(tx.error??Error('保存被取消'));});state=next;render();}finally{busy=false;}}
+async function commit(next){if(busy)throw Error('正在保存，请稍后');busy=true;try{next=validate(next);await new Promise((ok,no)=>{const tx=db.transaction('ledger','readwrite');const st=tx.objectStore('ledger');const check=st.get('current');
+check.onsuccess=()=>{
+  if(check.result && JSON.stringify(check.result)!==JSON.stringify(state)){tx.abort();return;}
+  if(state)st.put(state,'previous');
+  st.put(next,'current');
+};tx.oncomplete=ok;tx.onerror=()=>no(tx.error);tx.onabort=()=>no(tx.error??Error('另一页面已更新账本，请刷新后重试'));});state=next;render();}finally{busy=false;}}
 function catOptions(y){return [...(state.plans[y]?.categories??[]),{id:'free',name:'自由消费'}].map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');}
 function tab(id){document.querySelectorAll('main>section').forEach(e=>e.hidden=e.id!==id);document.querySelectorAll('nav button').forEach(e=>e.classList.toggle('active',e.dataset.tab===id));}
 function render(){const month=$('#month').value,y=month.slice(0,4),tx=state.transactions.filter(t=>t.date.startsWith(month)),p=state.plans[y];$('#total').textContent='¥'+money(tx.reduce((a,t)=>a+signed(t),0));$('#count').textContent=`${tx.length} 笔记录 · 转账不计入支出`;$('#refund').textContent='退款 ¥'+money(tx.filter(t=>t.kind==='refund').reduce((a,t)=>a+t.amount,0));const r=rows(state,month);$('#available').textContent='¥'+money(flexible(r));$('#categories').innerHTML=r.map(i=>`<div class="category" role="button" tabindex="0" data-category="${esc(i.id)}"><div class="rowtop"><b>${esc(i.name)}</b><span>¥${money(i.spent)} / ${money(i.budget)}</span></div><div class="track"><progress max="100" value="${i.budget>0?Math.min(100,Math.max(0,i.spent/i.budget*100)):0}"></progress></div><small class="${i.spent>i.budget?'negative':''}">${i.shared?'年底专项 · ':''}${i.spent>i.budget?'超出':'剩余'} ¥${money(Math.abs(i.budget-i.spent))}</small></div>`).join('');$('#empty').textContent=state.transactions.length?'':'开始你的本地账本：记一笔，或在「预算与备份」导入旧账本。';const selected=$('#filter').value;$('#filter').innerHTML='<option value="">全部分类</option>'+catOptions(y);$('#filter').value=[...$('#filter').options].some(o=>o.value===selected)?selected:'';renderList();$('#year').textContent=y;$('#budget').elements.income.value=p?p.income/100:0;$('#budget').elements.savings.value=p?p.savings/100:0;$('#budgetItems').innerHTML=(p?.categories??[]).map(c=>`<div class="budgetrow" data-id="${esc(c.id)}"><label>分类名称<input class="catname" value="${esc(c.name)}" required></label><label>年度预算（元）<input class="catamount" inputmode="decimal" value="${c.annual/100}" required></label></div>`).join('');$('#remaining').hidden=!state.remainingPlan;$('#remainingItems').innerHTML=(state.remainingPlan?.items??[]).map(i=>`<label>${esc(i.name)}（元）<input data-id="${esc(i.id)}" value="${i.amount/100}" inputmode="decimal" required></label>`).join('');$('#pension').checked=state.remainingPlan?.pensionPaidThroughYear===true;}
@@ -18,5 +24,16 @@ $('#export').onclick=()=>download(state);$('#import').onchange=async e=>{try{con
 $('#undo').onclick=async()=>{try{const old=await read('previous');if(!old){msg('暂无可恢复副本');return;}if(confirm('恢复到上一次保存之前？当前版本也会保留为恢复副本。')){await commit(old);msg('已恢复上一次保存前的账本');}}catch(e){msg('恢复失败：'+e.message);}};
 $('#newCategory').onclick=()=>{const el=document.createElement('div');el.className='budgetrow';el.dataset.id=crypto.randomUUID();el.innerHTML='<label>分类名称<input class="catname" required></label><label>年度预算（元）<input class="catamount" value="0" inputmode="decimal" required></label>';$('#budgetItems').append(el);};$('#budget').onsubmit=async e=>{e.preventDefault();try{const next=structuredClone(state),y=$('#month').value.slice(0,4),p=next.plans[y]??blank(y).plans[y];p.income=cents(e.target.elements.income.value);p.savings=cents(e.target.elements.savings.value);p.categories=[...document.querySelectorAll('.budgetrow')].map(el=>({...p.categories.find(c=>c.id===el.dataset.id),id:el.dataset.id,name:el.querySelector('.catname').value.trim(),annual:cents(el.querySelector('.catamount').value),period:p.categories.find(c=>c.id===el.dataset.id)?.period??'monthly',group:p.categories.find(c=>c.id===el.dataset.id)?.group??'日常',note:p.categories.find(c=>c.id===el.dataset.id)?.note??''}));next.plans[y]=p;await commit(next);msg('年度预算已保存');}catch(err){msg('保存失败：'+err.message);}};
 $('#remaining').onsubmit=async e=>{e.preventDefault();try{const next=structuredClone(state);for(const input of document.querySelectorAll('#remainingItems input'))next.remainingPlan.items.find(i=>i.id===input.dataset.id).amount=cents(input.value);next.remainingPlan.pensionPaidThroughYear=$('#pension').checked;await commit(next);msg('年底计划已保存');}catch(err){msg(err.message);}};
+setupCloud({
+  getLedger: () => state,
+  restore: commit,
+  readMeta: () => read('githubBackupTime'),
+  saveMeta: time => new Promise((resolve,reject)=>{
+    const tx=db.transaction('ledger','readwrite');
+    tx.objectStore('ledger').put(time,'githubBackupTime');
+    tx.oncomplete=resolve;
+    tx.onabort=()=>reject(tx.error);
+  })
+});
 if('serviceWorker'in navigator){try{const reg=await navigator.serviceWorker.register('./sw.js');await navigator.serviceWorker.ready;$('#offline').textContent='离线可用';reg.addEventListener('updatefound',()=>{const worker=reg.installing;worker.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)msg('发现新版本，关闭所有余量页面后重新打开即可更新，账本不受影响。');});});}catch{$('#offline').textContent='联网可用 · 离线缓存未完成';}}
 }init();
