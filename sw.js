@@ -1,5 +1,5 @@
-const CACHE = 'yuliang-web-v1.4';
-const FILES = ['./', './index.html', './app.js?v=1.4', './core.js', './cloud.js', './style.css?v=1.4', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
+const CACHE = 'yuliang-web-v1.5';
+const FILES = ['./', './index.html', './app.js', './core.js', './cloud.js', './style.css', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => event.waitUntil(
   caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())
 ));
@@ -8,15 +8,14 @@ self.addEventListener('activate', event => event.waitUntil(
 ));
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;
-  if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).then(response => {
-      if (response.ok) {
-        const copy = response.clone();
-        event.waitUntil(caches.open(CACHE).then(cache => cache.put('./index.html', copy)));
-      }
-      return response;
-    }).catch(() => caches.match('./index.html')));
-    return;
-  }
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  event.respondWith(fetch(event.request).then(response => {
+    if (response.ok) {
+      const copy = response.clone();
+      event.waitUntil(caches.open(CACHE).then(cache => cache.put(event.request, copy)));
+    }
+    return response;
+  }).catch(async () => {
+    const cached = await caches.match(event.request);
+    return cached || (event.request.mode === 'navigate' ? caches.match('./index.html') : Response.error());
+  }));
 });

@@ -35,5 +35,18 @@ setupCloud({
     tx.onabort=()=>reject(tx.error);
   })
 });
-if('serviceWorker'in navigator){try{const reg=await navigator.serviceWorker.register('./sw.js');await navigator.serviceWorker.ready;$('#offline').textContent='离线可用';reg.addEventListener('updatefound',()=>{const worker=reg.installing;worker.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)msg('发现新版本，关闭所有余量页面后重新打开即可更新，账本不受影响。');});});}catch{$('#offline').textContent='联网可用 · 离线缓存未完成';}}
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!$('#editor').open) location.reload();
+    else msg('新版已就绪，保存或关闭当前记录后重新打开页面即可更新。');
+  });
+  try {
+    const registration = await navigator.serviceWorker.register('./sw.js');
+    await navigator.serviceWorker.ready;
+    $('#offline').textContent = '离线可用';
+    registration.update().catch(() => {});
+  } catch {
+    $('#offline').textContent = '联网可用 · 离线缓存未完成';
+  }
+}
 }init();
